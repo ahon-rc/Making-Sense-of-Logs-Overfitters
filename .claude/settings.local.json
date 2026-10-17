@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": [
+    "serenedb-logs"
+  ],
+  "enableAllProjectMcpServers": true
+}
