@@ -43,7 +43,7 @@ If you prefer `psql`, run `psql -h localhost -p 7890 -U postgres -f sql/rebuild.
 
 | Tab | What it does | Path through the system |
 |---|---|---|
-| **Ask Claude** | Pick Engineer, Team lead or Manager. The role's default question is filled in and you can change it. Claude's tool calls appear in the Evidence panel as they happen, each with its headline numbers, first rows and the exact SQL. The answer is saved to `investigation/runs/`. | browser → Claude Code (`claude -p`) → MCP server → SereneDB |
+| **Ask Claude** | Pick Manager, Team lead or Engineer. The role's default question is filled in and you can change it. Claude's tool calls appear in the Evidence panel as they happen, each with its headline numbers, first rows and the exact SQL. The answer is saved to `investigation/runs/`, and **Show a saved answer** replays any earlier answer instantly. | browser → Claude Code (`claude -p`) → MCP server → SereneDB |
 | **Explore data** | Charts and tables from the same query functions, without the LLM. It shows non-INFO lines by team, a trend with a full-text filter, the top recurring message patterns, VM spawn times, and log search. Every panel has a **SQL** toggle. | browser → query layer → SereneDB |
 | **Setup** | A checklist of what is ready (database, CSVs, tables, indexes, Claude Code, `.mcp.json`) and a **Run setup** button. | browser → `scripts/setup_db.py` |
 
@@ -131,13 +131,17 @@ Results are capped at 200 rows and messages at 400 characters. Totals are always
 
 ## The three roles
 
-| Role | Default question | Evidence it gathers | What it recommends |
-|---|---|---|---|
-| Engineer | What failed, in which component, and what happened just before and after? | full-text search for the error, the events around it, the VM's timeline, how often this exact error occurs | a possible cause, labelled as a hypothesis, and the next concrete check |
-| Team lead | Which problems recur, how often, and which components or teams are involved? | non-INFO counts per team and per message pattern for both datasets, trends over a stated period, spawn-time comparison | the 1–3 recurring problems to investigate first, each with its owning team |
-| Manager | Which observed problems deserve attention first, and what should happen next? | team totals for both datasets, the top patterns in plain words, whether the top problem is ongoing, slow-start risk | at most 3 ranked priorities with a confidence level, and what is still unknown. It does not invent costs, downtime or customer impact. |
+The roles form a ladder of technical depth. The manager gets plain language, the team lead gets component names, counts and trends, and the engineer gets raw log lines, ids and stack frames.
 
-Every role must label statements OBSERVED, HYPOTHESIS or NEXT CHECK, state the data scope, count log lines rather than incidents, and end with the SQL behind each number.
+| | Manager | Team lead | Engineer |
+|---|---|---|---|
+| **Detail level** | Plain language: no jargon, a few rounded numbers | Some technical detail: components, counts, shares, trends | Full technical detail: raw lines, ids, millisecond timelines, stack frames |
+| **Default question** | Which observed problems deserve attention first, and what should happen next? | Which problems recur, how often, and which components or teams are involved? | What failed, in which component, and what happened just before and after? |
+| **Evidence it gathers** | team totals for both datasets, the top problems, whether the top one is ongoing, slow-start risk | counts per team and per message pattern for both datasets, hourly or daily trends, spawn-time comparison | full-text search for the error, the events around it, the VM's timeline, how often this exact error occurs |
+| **What it recommends** | at most 3 priorities, each with an owner, a next step and a confidence level, plus what the logs can't tell us | the 1–3 problems each team investigates first, and the measurement that will show it is fixed | the likely cause with alternatives, and concrete next checks: commands, config values, follow-up queries |
+| **Facts and guesses labelled as** | Measured / What it probably means / Next step | OBSERVED / HYPOTHESIS / NEXT CHECK | OBSERVED / HYPOTHESIS / NEXT CHECK |
+
+Every role states the data scope, counts log lines rather than incidents, never invents costs, downtime or customer impact, and ends with the SQL behind each number. In the web app that SQL section is folded under the answer, one click away.
 
 ## Worked investigation
 

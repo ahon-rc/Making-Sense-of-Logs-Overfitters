@@ -1,4 +1,4 @@
-"""MCP server: exposes the SereneDB log queries in log_tools.py as tools Claude can call.
+"""MCP server: exposes the SereneDB log queries in tools.py as tools Claude can call.
 
 Run by Claude Code over stdio (see .mcp.json); you don't start it by hand.
 Each tool's docstring is what Claude reads when deciding which tool to call, so the descriptions
@@ -13,8 +13,7 @@ from pydantic import Field
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from logsense import roles
-from logsense import tools
+from logsense import roles, tools
 
 INSTRUCTIONS = """\
 Tools for investigating the Loghub OpenStack (2017, ~208k lines) and BGL (2005-06, ~4.7M lines) logs stored
@@ -199,29 +198,30 @@ def duration_stats(
 
 # ---------------------------------------------------------------------------------------------
 # Role prompts: in Claude Code these appear as slash commands, e.g.
-#   /mcp__serenedb-logs__engineer  /mcp__serenedb-logs__team_lead  /mcp__serenedb-logs__manager
-# Same tools and data for everyone; each role changes the questions, evidence and recommendation.
+#   /mcp__serenedb-logs__manager  /mcp__serenedb-logs__team_lead  /mcp__serenedb-logs__engineer
+# Same tools and data for everyone; each role changes the questions, evidence and recommendation,
+# and the technical depth rises from manager (plain language) to engineer (full detail).
 # ---------------------------------------------------------------------------------------------
 
 QuestionArg = Annotated[Optional[str], Field(description="Your question. Leave empty to use the role's default.")]
 
 
-@mcp.prompt(title=roles.ROLES["engineer"]["title"])
-def engineer(question: QuestionArg = None) -> str:
-    """Investigate an error: what failed, where, what happened before and after, and the next check."""
-    return roles.render("engineer", question)
+@mcp.prompt(title=roles.ROLES["manager"]["title"])
+def manager(question: QuestionArg = None) -> str:
+    """Plain-language priorities: what to act on first and who owns it, from measured frequency only."""
+    return roles.render("manager", question)
 
 
 @mcp.prompt(title=roles.ROLES["team_lead"]["title"])
 def team_lead(question: QuestionArg = None) -> str:
-    """Recurring problems: counts and trends per owning team, and what to investigate first."""
+    """Recurring problems: counts and trends per owning team, and what each team investigates first."""
     return roles.render("team_lead", question)
 
 
-@mcp.prompt(title=roles.ROLES["manager"]["title"])
-def manager(question: QuestionArg = None) -> str:
-    """Prioritised risks and actions from measured frequency, without invented impact."""
-    return roles.render("manager", question)
+@mcp.prompt(title=roles.ROLES["engineer"]["title"])
+def engineer(question: QuestionArg = None) -> str:
+    """Full technical detail on an error: raw lines, timeline, stack frames, likely cause and next checks."""
+    return roles.render("engineer", question)
 
 
 if __name__ == "__main__":

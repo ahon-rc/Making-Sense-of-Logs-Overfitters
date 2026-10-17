@@ -82,12 +82,15 @@ The same text reaches Claude by three routes:
 - `scripts/run_investigation.py` sends it to `claude -p` to record the worked investigation;
 - the web app's Ask tab sends it to `claude -p` and streams the result to the browser.
 
-| | Engineer | Team lead | Manager |
+| | Manager | Team lead | Engineer |
 |---|---|---|---|
-| Question | What failed and why? | What recurs, and who owns it? | What first, and what next? |
-| Main tools | `search_logs`, `get_context`, `instance_timeline` | `count_by` (team, message_pattern), `trend` | `count_by` (team), `duration_stats`, `trend` |
-| Evidence shown | raw log lines with source line numbers | tables of counts, shares and trends | one measured number per priority |
-| Recommendation | the next technical check | what the team investigates first | ranked actions with a confidence level |
+| Question | What first, and what next? | What recurs, and who owns it? | What failed and why? |
+| Detail level | plain language, no jargon | components, counts and trends | raw lines, ids, stack frames |
+| Main tools | `count_by` (team), `duration_stats`, `trend` | `count_by` (team, message_pattern), `trend` | `search_logs`, `get_context`, `instance_timeline` |
+| Evidence shown | a few rounded numbers per priority | tables of counts, shares and trends | raw log lines with source line numbers and ms timings |
+| Recommendation | ranked actions with an owner and a confidence level | what each team investigates first, and how to tell it is fixed | the likely cause, alternatives, and concrete next checks |
+
+The manager labels facts and guesses in plain words (Measured / What it probably means / Next step); the other two use OBSERVED / HYPOTHESIS / NEXT CHECK.
 
 ### 4. Agent: Claude Code, driven by `logsense/agent.py`
 

@@ -1,7 +1,8 @@
 """
 Three tabs, three paths through the same layers:
     Ask      browser -> /api/ask   -> Claude Code (claude -p) -> MCP server -> logsense.tools -> SereneDB
-        (tool calls and their SQL stream back live, the answer is saved to investigation/runs/)
+        (tool calls and their SQL stream back live, the answer is saved to investigation/runs/;
+            /api/replay re-streams a saved answer instantly, which keeps a demo independent of wait times)
     Explore  browser -> /api/tools -> logsense.tools -> SereneDB  (same queries, no LLM: instant charts)
     Setup    browser -> /api/setup -> scripts/setup_db.py         (convert + load + index, output streamed)
 Binds to 127.0.0.1 only: it can run commands on this machine, so it is not meant to be exposed.
@@ -80,7 +81,49 @@ def status():
 
 @app.get("/api/roles")
 def list_roles():
-    return [{"id": k, "title": v["title"], "question": v["default_question"]} for k, v in roles.ROLES.items()]
+    return [{"id": k, "title": v["title"], "level": v["level"], "question": v["default_question"]}
+            for k, v in roles.ROLES.items()]
+
+
+def _saved_runs():
+    """Answers saved by run_investigation.py (investigation/) and by the Ask tab (investigation/runs/)."""
+    by_title = {v["title"]: k for k, v in roles.ROLES.items()}
+    runs = []
+    for folder, source in ((ROOT / "investigation", "worked investigation"), (RUNS, "asked in the web app")):
+        for md in folder.glob("*.md"):
+            raw = folder / "raw" / f"{md.stem}.jsonl"
+            if not raw.exists():
+                continue
+            lines = md.read_text(encoding="utf-8").splitlines()
+            title = lines[0].lstrip("# ").strip() if lines else md.stem
+            question = next((ln[2:].strip() for ln in lines if ln.startswith("> ")), "")
+            runs.append({"id": md.relative_to(ROOT).as_posix(), "role": by_title.get(title), "title": title,
+                        "question": question, "source": source, "mtime": md.stat().st_mtime, "raw": raw})
+    return sorted(runs, key=lambda r: r["mtime"], reverse=True)
+
+
+@app.get("/api/runs")
+def list_runs():
+    return [{k: v for k, v in r.items() if k != "raw"} for r in _saved_runs()]
+
+
+@app.post("/api/replay")
+def replay(body: dict = Body(...)):
+    """Re-stream a saved answer through the same pipeline as a live one (instant, no Claude call)."""
+    run = next((r for r in _saved_runs() if r["id"] == body.get("id")), None)
+    if not run:
+        raise HTTPException(404, "no saved answer with that id")
+
+    def events():
+        t = agent.Transcript()
+        yield sse({"type": "start", "role": run["role"], "question": run["question"], "replay": run["id"]})
+        for line in run["raw"].read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                for ev in t.feed(json.loads(line)):
+                    yield sse(ev)
+        yield sse({"type": "done"})
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.post("/api/tools/{name}")

@@ -64,6 +64,12 @@
 							Stop
 						</button>
 						<span id="ask-state" class="muted"></span>
+						<select
+							id="saved"
+							class="saved"
+							aria-label="Show a saved answer">
+							<option value="">Show a saved answer…</option>
+						</select>
 					</div>
 				</form>
 				<div class="ask-grid">
@@ -73,7 +79,9 @@
 							Pick a role, adjust the question if you like, and
 							press <b>Ask Claude</b>. Claude decides which tools
 							to call; every number in the answer comes from a
-							query shown on the right.
+							query shown on the right. The roles go from plain
+							language (manager) to full technical detail
+							(engineer).
 						</div>
 						<div id="answer-meta" class="meta"></div>
 					</article>
