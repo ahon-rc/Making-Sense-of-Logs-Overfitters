@@ -1,0 +1,15 @@
+# SereneDB for local development: `docker compose up -d`
+services:
+  serenedb:
+    image: serenedb/serenedb:26.10.1   # version the project was built and tested on
+    container_name: serenedb
+    ports:
+      - "7890:7890"
+    environment:
+      SERENEDB_HOST_AUTH_METHOD: trust  # no password: fine for a laptop demo, never for a shared server
+    volumes:
+      - serenedb-data:/var/lib/serenedb # database files survive container restarts
+      - ./data:/data:ro                 # CSVs from scripts/setup_db.py, read by sql/02_load.sql as /data/*.csv
+
+volumes:
+  serenedb-data:

@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+    "serenedb-logs": {
+        "command": "python",
+        "args": ["-m", "logsense.mcp_server"],
+        "env": {
+            "SERENEDB_HOST": "localhost",
+            "SERENEDB_PORT": "7890",
+            "SERENEDB_USER": "postgres",
+            "SERENEDB_DB": "postgres"
+            }
+        }
+    }
+}

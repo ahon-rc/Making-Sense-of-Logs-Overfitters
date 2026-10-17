@@ -1,0 +1,4 @@
+mcp>=2.2,<3            # MCP server SDK
+psycopg[binary]>=3.2   # SereneDB speaks the PostgreSQL wire protocol
+fastapi>=0.110         # local web app
+uvicorn>=0.29
