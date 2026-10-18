@@ -4,29 +4,39 @@ An engineer, a team lead and a manager ask questions about the same logs (Loghub
 SereneDB does the searching and counting. Claude chooses which tools to call through an MCP server, reads the results and explains them.
 Every number in an answer comes with the SQL that produced it.
 
-There are three ways to use it:
+The core is the MCP server and the database. You can use it in two ways with just the core installed:
 
-- **The web app**: a FastAPI backend (`app/`) and a React frontend (`frontend/`). Pick a role, ask one question, and watch Claude's tool calls and their SQL appear live above the answer. It also has an **Insights** view with charts and a **Setup** view that builds the database.
 - **Claude Code** in this folder. It starts the MCP server from `.mcp.json`, and the three roles are slash commands.
 - **A recorded investigation** (`python scripts/run_investigation.py`). It runs all three roles headless and saves the answers with every tool call and query.
 
+There is also an **optional web app**, with a FastAPI backend in `app/` and a React frontend in `frontend/`. You pick a role, ask one question, and watch Claude's tool calls and their SQL appear live above the answer. It also has an **Insights** view with charts and a **Setup** view. It needs Node.js on top of the core, and you can skip it entirely. See [Optional: the web app](#optional-the-web-app).
+
 ## Prerequisites
+
+### Required
 
 | Tool | Version | Used for | Check with |
 |---|---|---|---|
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | any recent | runs SereneDB 26.10.1 | `docker --version` |
-| [Python](https://www.python.org/downloads/) | 3.10 or newer | backend, MCP server, setup scripts | `python --version` |
-| [Node.js](https://nodejs.org/) | 20.19+ or 22.12+ (current LTS is fine) | builds and serves the React frontend | `node --version` |
+| [Python](https://www.python.org/downloads/) | 3.10 or newer | MCP server, setup and investigation scripts | `python --version` |
 | [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) | latest | the agent that answers questions | `claude --version` |
 | Git | any | cloning the repo | `git --version` |
 
-Sign in to Claude Code once by running `claude` in a terminal. The web app uses that login, so each question counts against your Claude plan. Each answer shows what it cost (about $0.50 to $0.70 in our test runs).
+Sign in to Claude Code once by running `claude` in a terminal. Questions count against your Claude plan. In our test runs one answer cost about $0.50 to $0.70.
 
 You also need about 3 GB of free disk space: 1.5 GB for the raw logs and CSVs, plus the database.
 
 On macOS and Linux, use `python3` and `pip3` wherever this guide says `python` and `pip`, if `python` is not Python 3.
 
+### Optional: only for the web app
+
+| Tool | Version | Used for | Check with |
+|---|---|---|---|
+| [Node.js](https://nodejs.org/), which includes npm | 20.19+ or 22.12+ (current LTS is fine) | installs, builds and serves the React frontend | `node --version`, `npm --version` |
+
 ## Installation
+
+These four steps install the core. They are all you need for Claude Code and the recorded investigation.
 
 ### 1. Get the code
 
@@ -59,19 +69,11 @@ source .venv/bin/activate         # macOS / Linux
 pip install -r requirements.txt
 ```
 
-This installs `mcp`, `psycopg`, `fastapi` and `uvicorn`.
+This installs `mcp` and `psycopg`, which the core needs, and `fastapi` and `uvicorn`, which only the web app's backend uses. They are small, so the one file installs them all.
 
-If you use a virtual environment, activate it in every terminal where you run the backend or Claude Code, so `python -m logsense.mcp_server` finds the packages.
+If you use a virtual environment, activate it in every terminal where you run Claude Code, the scripts or the web app's backend, so `python -m logsense.mcp_server` finds the packages.
 
-### 4. Install the frontend packages
-
-```
-cd frontend
-npm install
-cd ..
-```
-
-### 5. Load the logs into SereneDB
+### 4. Load the logs into SereneDB
 
 ```
 python scripts/setup_db.py --download
@@ -88,52 +90,13 @@ Converting and loading the 4.7M BGL lines takes a few minutes.
 
 - If you already have the raw files, put them anywhere under `data/` and leave out `--download`. [data/README.md](data/README.md) lists the files.
 - If the CSVs already exist, conversion is skipped. Add `--reconvert` to rebuild them.
-- You can also run this step later from the web app's **Setup** view, which streams the same output.
 
 `setup_db.py` sends the SQL in `sql/` with the same Python driver the tools use, so you don't need `psql`.
 If you prefer `psql`, run `psql -h localhost -p 7890 -U postgres -f sql/rebuild.sql` after the CSVs exist.
 
-## Running the web app
-
-The web app is two processes, each in its own terminal, both started from the repo root:
-
-**Terminal 1: the API** (FastAPI on `127.0.0.1:8000`)
-
-```
-python app/server.py
-```
-
-**Terminal 2: the frontend** (Vite on `localhost:5173`)
-
-```
-cd frontend
-npm run dev
-```
-
-Open **http://localhost:5173**. The API also tries to open it for you; set `LOGSENSE_NO_BROWSER=1` to stop that.
-
-Vite forwards every `/api/...` request to port 8000, so the browser only talks to `localhost:5173`. If the API runs elsewhere, set `LOGSENSE_API`, for example `LOGSENSE_API=http://127.0.0.1:9000 npm run dev`. To run the API on another port, set `LOGSENSE_PORT`.
-
-The header shows three status pills: SereneDB connected, how many log lines are loaded, and whether Claude Code was found. If any is red, open **Setup** at the bottom of the sidebar.
-
-### Production build (optional)
-
-```
-cd frontend
-npm run build      # type-checks, then writes static files to frontend/dist/
-npm run preview    # serves dist/ on localhost:4173, with the same /api proxy
-```
+The core is now installed. Continue with [Using it](#using-it), or add the [web app](#optional-the-web-app).
 
 ## Using it
-
-### Web app
-
-| View | What it does | Path through the system |
-|---|---|---|
-| **Chat** (New chat) | Pick Manager, Team lead or Engineer with the **+** button, then ask a question, or click the suggested question for that role. Each tool call Claude makes appears as a card while it runs, with its headline numbers, first rows and the exact SQL. Then the answer appears, with its closing SQL section folded away. Each chat is one question and one answer. Use **Ask another question** to start the next one. Answers are saved to `investigation/runs/`. | browser → `/api/ask` → Claude Code (`claude -p`) → MCP server → SereneDB |
-| **History** (sidebar) | Every saved answer, grouped by role and collapsed by default. Clicking one replays it instantly in a new chat, with the same tool cards and answer and no Claude call. | browser → `/api/replay` |
-| **Insights** | Charts and tables from the same query functions, without the LLM: totals, non-INFO lines by team, a trend with a full-text filter, the top recurring message patterns, VM spawn times, and log search. Every panel has a **SQL** toggle. Switch between OpenStack and BGL at the top. | browser → `/api/tools/<name>` → query layer → SereneDB |
-| **Setup** (bottom of sidebar) | A checklist of what is ready (database, CSVs, tables, indexes, Claude Code, `.mcp.json`) and a **Run setup** button that streams the output of `scripts/setup_db.py`. | browser → `/api/setup` |
 
 ### Claude Code
 
@@ -162,7 +125,59 @@ python scripts/run_investigation.py engineer --question "What happened to instan
 ```
 
 For each role this writes `investigation/<role>.md`, which holds the question, the answer, and every tool call in order with its arguments, headline numbers and exact SQL.
-The full event stream goes to `investigation/raw/<role>.jsonl`. These answers also appear in the web app's History.
+The full event stream goes to `investigation/raw/<role>.jsonl`. If you install the web app, these answers also appear in its History.
+
+## Optional: the web app
+
+The web app puts the same workflow in a browser. It shows Claude's tool calls and SQL live and replays saved answers instantly, and it adds charts and a setup page. It needs the core installation above, plus Node.js (see [Prerequisites](#optional-only-for-the-web-app)).
+
+### Install
+
+```
+cd frontend
+npm install
+cd ..
+```
+
+### Run
+
+The web app is two processes, each in its own terminal, both started from the repo root.
+
+**Terminal 1: the API** (FastAPI on `127.0.0.1:8000`)
+
+```
+python app/server.py
+```
+
+**Terminal 2: the frontend** (Vite on `localhost:5173`)
+
+```
+cd frontend
+npm run dev
+```
+
+Open **http://localhost:5173**. The API also tries to open it for you; set `LOGSENSE_NO_BROWSER=1` to stop that.
+
+Vite forwards every `/api/...` request to port 8000, so the browser only talks to `localhost:5173`. If the API runs elsewhere, set `LOGSENSE_API`, for example `LOGSENSE_API=http://127.0.0.1:9000 npm run dev`. To run the API on another port, set `LOGSENSE_PORT`.
+
+The header shows three status pills: SereneDB connected, how many log lines are loaded, and whether Claude Code was found. If any is red, open **Setup** at the bottom of the sidebar.
+
+### Production build
+
+```
+cd frontend
+npm run build      # type-checks, then writes static files to frontend/dist/
+npm run preview    # serves dist/ on localhost:4173, with the same /api proxy
+```
+
+### Views
+
+| View | What it does | Path through the system |
+|---|---|---|
+| **Chat** (New chat) | Pick Manager, Team lead or Engineer with the **+** button, then ask a question, or click the suggested question for that role. Each tool call Claude makes appears as a card while it runs, with its headline numbers, first rows and the exact SQL. Then the answer appears, with its closing SQL section folded away. Each chat is one question and one answer. Use **Ask another question** to start the next one. Answers are saved to `investigation/runs/`. | browser → `/api/ask` → Claude Code (`claude -p`) → MCP server → SereneDB |
+| **History** (sidebar) | Every saved answer, grouped by role and collapsed by default. Clicking one replays it instantly in a new chat, with the same tool cards and answer and no Claude call. | browser → `/api/replay` |
+| **Insights** | Charts and tables from the same query functions, without the LLM: totals, non-INFO lines by team, a trend with a full-text filter, the top recurring message patterns, VM spawn times, and log search. Every panel has a **SQL** toggle. Switch between OpenStack and BGL at the top. | browser → `/api/tools/<name>` → query layer → SereneDB |
+| **Setup** (bottom of sidebar) | A checklist of what is ready (database, CSVs, tables, indexes, Claude Code, `.mcp.json`) and a **Run setup** button that streams the output of `scripts/setup_db.py`, the same as installation step 4. | browser → `/api/setup` |
 
 ## How it works
 
@@ -188,8 +203,8 @@ flowchart LR
 
 | Folder | What's in it | You open it to |
 |---|---|---|
-| `frontend/` | The React + TypeScript UI (Vite, assistant-ui). `src/App.tsx` is the layout and chat, `src/chat-api.ts` streams answers, `src/Insights.tsx` and `src/Setup.tsx` are the other two views, `src/components/` holds the tool-call card, tables and charts | change the web page |
-| `app/` | `server.py`, the FastAPI backend: status, roles, saved answers, replay, tools, ask and setup endpoints | change an API endpoint |
+| `frontend/` | Optional web app: the React + TypeScript UI (Vite, assistant-ui). `src/App.tsx` is the layout and chat, `src/chat-api.ts` streams answers, `src/Insights.tsx` and `src/Setup.tsx` are the other two views, `src/components/` holds the tool-call card, tables and charts | change the web page |
+| `app/` | Optional web app: `server.py`, the FastAPI backend: status, roles, saved answers, replay, tools, ask and setup endpoints | change an API endpoint |
 | `logsense/` | The shared Python package: `tools.py` (the 7 SQL queries), `mcp_server.py` (offers them to Claude), `roles.py` (the 3 role playbooks), `agent.py` (runs Claude Code and records its tool calls) | change a query, a tool description or a role |
 | `scripts/` | Commands you run: `setup_db.py` builds the database, `logs_to_csv.py` parses the raw logs, `run_investigation.py` records the 3 role answers | set up, or record the investigation |
 | `sql/` | The database build, in order: schema, load, team ownership, search indexes, checks | change the tables or the team mapping |
@@ -248,7 +263,7 @@ The three OpenStack files cover separate time windows (05-14 19:39–21:56, 05-1
 | Role-appropriate insight (30%) | `logsense/roles.py`. Each role uses different tools, evidence and recommendations, not just a different answer length. See `investigation/*.md`. |
 | Search and analytics together (25%) | `search_logs` and `get_context` use SereneDB's inverted index, with phrases, OR, exclusions and time filters. `count_by` and `trend` aggregate over the whole tables, joined to team ownership. Every result reports its true total and whether it was truncated. |
 | Recommendation quality (25%) | Statements are labelled OBSERVED / HYPOTHESIS / NEXT CHECK, each number links to its SQL, and every answer has a "what we don't know" section. |
-| Execution (20%) | `docker compose up -d`, one setup script, then the API and the frontend, tested from a clean copy. The web app shows the workflow live. |
+| Execution (20%) | `docker compose up -d`, `pip install` and one setup script, tested from a clean copy. The optional web app shows the workflow live. |
 | Best MCP Server (special award) | 7 tools with descriptions written for the agent, allow-listed arguments, row and message limits, errors that list the valid options, and 3 role prompts. |
 
 ## Data model
@@ -305,17 +320,23 @@ The tools, setup script and web app read `SERENEDB_HOST`, `SERENEDB_PORT`, `SERE
 
 ## Troubleshooting
 
-- **The status pills say "SereneDB offline"**: Docker Desktop isn't running or the container is stopped. Run `docker compose up -d`, then click **Check again** in Setup.
-- **The page loads but nothing else does, and Vite prints `http proxy error ... ECONNREFUSED`**: the API isn't running. Start `python app/server.py` in a second terminal.
-- **`'claude' is not recognized`** (Windows): Claude Code is not on your PATH. Reinstall it or open a new terminal. The Setup view shows whether it found `claude`.
+### Core
+
+- **`'claude' is not recognized`** (Windows): Claude Code is not on your PATH. Reinstall it or open a new terminal.
 - **A question fails straight away with a Claude Code error**: run `claude` once in a terminal and sign in, then try again.
-- **`ModuleNotFoundError: No module named 'psycopg'` (or `fastapi`, `mcp`)**: the packages went into a different Python. Activate your virtual environment, or run `python -m pip install -r requirements.txt` with the same `python` you start the server with.
-- **`npm run dev` fails with an engine or syntax error**: Node.js is too old. Vite 8 needs Node 20.19+ or 22.12+.
-- **Port 5173 or 8000 already in use**: another copy is still running. Stop it, or use `npm run dev -- --port 5174` and `LOGSENSE_PORT=8001` (then start Vite with `LOGSENSE_API=http://127.0.0.1:8001`).
+- **`ModuleNotFoundError: No module named 'psycopg'` (or `mcp`)**: the packages went into a different Python. Activate your virtual environment, or run `python -m pip install -r requirements.txt` with the same `python` you use for the scripts.
+- **The MCP server doesn't show in `/mcp`**: start `claude` from the repo folder, so that `python -m logsense.mcp_server` can find the package. Run `pip install -r requirements.txt` in the same Python that `python` points to.
 - **Port 7890 already in use**: an older SereneDB container is still running. Remove it with `docker rm -f serenedb`, then run `docker compose up -d`.
 - **`role "root" does not exist`** or a password prompt from `psql`: add `-U postgres -d postgres`. The container accepts that user without a password.
-- **The MCP server doesn't show in `/mcp`**: start `claude` from the repo folder, so that `python -m logsense.mcp_server` can find the package. Run `pip install -r requirements.txt` in the same Python that `python` points to.
 - **`Missing raw files under data/`** from setup: run it with `--download`, or put the raw logs under `data/` as listed in [data/README.md](data/README.md).
+
+### Web app (optional)
+
+- **The status pills say "SereneDB offline"**: Docker Desktop isn't running or the container is stopped. Run `docker compose up -d`, then click **Check again** in Setup.
+- **The page loads but nothing else does, and Vite prints `http proxy error ... ECONNREFUSED`**: the API isn't running. Start `python app/server.py` in a second terminal.
+- **`'npm' is not recognized`** or **`npm run dev` fails with an engine or syntax error**: Node.js is missing or too old. Install Node 20.19+ or 22.12+, which includes npm, and open a new terminal.
+- **`ModuleNotFoundError: No module named 'fastapi'`**: run `pip install -r requirements.txt` in the same Python you start `app/server.py` with.
+- **Port 5173 or 8000 already in use**: another copy is still running. Stop it, or use `npm run dev -- --port 5174` and `LOGSENSE_PORT=8001` (then start Vite with `LOGSENSE_API=http://127.0.0.1:8001`).
 
 ## Known limitations
 
