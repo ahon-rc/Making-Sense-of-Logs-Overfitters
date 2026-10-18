@@ -1,10 +1,11 @@
 """
-Three tabs, three paths through the same layers:
-    Ask      browser -> /api/ask   -> Claude Code (claude -p) -> MCP server -> logsense.tools -> SereneDB
+The logsense API. The UI is the React app in frontend/ (`npm run dev`), which proxies /api here.
+Three views in the UI, three paths through the same layers:
+    Chat      browser -> /api/ask   -> Claude Code (claude -p) -> MCP server -> logsense.tools -> SereneDB
         (tool calls and their SQL stream back live, the answer is saved to investigation/runs/;
             /api/replay re-streams a saved answer instantly, which keeps a demo independent of wait times)
-    Explore  browser -> /api/tools -> logsense.tools -> SereneDB  (same queries, no LLM: instant charts)
-    Setup    browser -> /api/setup -> scripts/setup_db.py         (convert + load + index, output streamed)
+    Insights  browser -> /api/tools -> logsense.tools -> SereneDB  (same queries, no LLM: instant charts)
+    Setup     browser -> /api/setup -> scripts/setup_db.py         (convert + load + index, output streamed)
 Binds to 127.0.0.1 only: it can run commands on this machine, so it is not meant to be exposed.
 """
 import json
@@ -21,28 +22,20 @@ sys.path.insert(0, str(ROOT))  # make `logsense` importable
 
 import psycopg  # noqa: E402
 from fastapi import Body, FastAPI, HTTPException  # noqa: E402
-from fastapi.responses import FileResponse, StreamingResponse  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.responses import StreamingResponse  # noqa: E402
 
 from logsense import agent, roles, tools  # noqa: E402
 
-STATIC = pathlib.Path(__file__).resolve().parent / "static"
 RUNS = ROOT / "investigation" / "runs"
 TOOLS = {f.__name__: f for f in (tools.corpus_overview, tools.search_logs, tools.get_context, tools.count_by,
                                 tools.trend, tools.instance_timeline, tools.duration_stats)}
 _db_lock = threading.Lock()  # one shared DB connection; requests run in a thread pool
 
 app = FastAPI(title="logsense")
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def sse(obj) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n"
-
-
-@app.get("/")
-def index():
-    return FileResponse(STATIC / "index.html")
 
 
 @app.get("/api/status")
@@ -86,7 +79,7 @@ def list_roles():
 
 
 def _saved_runs():
-    """Answers saved by run_investigation.py (investigation/) and by the Ask tab (investigation/runs/)."""
+    """Answers saved by run_investigation.py (investigation/) and by the chat (investigation/runs/)."""
     by_title = {v["title"]: k for k, v in roles.ROLES.items()}
     runs = []
     for folder, source in ((ROOT / "investigation", "worked investigation"), (RUNS, "asked in the web app")):
@@ -128,7 +121,7 @@ def replay(body: dict = Body(...)):
 
 @app.post("/api/tools/{name}")
 def call_tool(name: str, args: dict = Body(default={})):
-    """Explore tab: run one of the MCP tools' query functions directly (no LLM in the loop)."""
+    """Insights view: run one of the MCP tools' query functions directly (no LLM in the loop)."""
     if name not in TOOLS:
         raise HTTPException(404, f"unknown tool {name}")
     try:
@@ -193,8 +186,9 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("LOGSENSE_PORT", "8000"))
-    url = f"http://127.0.0.1:{port}"
-    print(f"logsense web app on {url}  (Ctrl+C to stop)")
+    url = os.getenv("LOGSENSE_UI_URL", "http://localhost:5173")
+    print(f"logsense API on http://127.0.0.1:{port}  (Ctrl+C to stop)")
+    print(f"UI: run `npm run dev` in frontend/, then open {url}")
     if not os.getenv("LOGSENSE_NO_BROWSER"):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

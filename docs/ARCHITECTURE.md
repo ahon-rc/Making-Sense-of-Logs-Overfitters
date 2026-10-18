@@ -80,7 +80,7 @@ The brief asks for three roles using **the same agent and the same data**. So th
 The same text reaches Claude by three routes:
 - the MCP server publishes it as **prompts**, which Claude Code shows as slash commands;
 - `scripts/run_investigation.py` sends it to `claude -p` to record the worked investigation;
-- the web app's Ask tab sends it to `claude -p` and streams the result to the browser.
+- the web app's chat sends it to `claude -p` and streams the result to the browser.
 
 | | Manager | Team lead | Engineer |
 |---|---|---|---|
@@ -103,26 +103,37 @@ The server's `instructions` set the ground rules:
 
 `logsense/agent.py` runs Claude Code headless and makes its work visible. It starts `claude -p --output-format stream-json` with this repo's `.mcp.json` as its only MCP config, and it pre-approves only the `serenedb-logs` tools. It then reads the event stream as it arrives. Each tool call is paired with its result and reduced to a headline (totals, groups, truncated), the first rows and the SQL. `save()` writes the readable `.md` and the raw `.jsonl`. Both the web app and `run_investigation.py` use this module, so they show exactly the same evidence.
 
-## The web app: `app/`
+## The web app: `app/` (API) and `frontend/` (UI)
 
-`app/server.py` is a small FastAPI server on `127.0.0.1:8000`. The page (`app/static/`) is plain HTML, CSS and JavaScript with no build step. Three vendored libraries render markdown (marked and DOMPurify) and charts (Chart.js).
+`app/server.py` is a small FastAPI server on `127.0.0.1:8000` that only serves the API. The UI in `frontend/` is a React + TypeScript app built with Vite, using assistant-ui for the chat. In development, Vite serves it on `localhost:5173` and forwards every `/api` request to the FastAPI server, so the browser only ever talks to one origin.
 
 ```
- Ask      browser ─POST /api/ask─► agent.py ─► claude -p ─MCP─► mcp_server.py ─► tools.py ─► SereneDB
-          ◄──── server-sent events: tool_call, tool_result (headline + SQL), note, final, saved
+ Chat      browser ─POST /api/ask─► agent.py ─► claude -p ─MCP─► mcp_server.py ─► tools.py ─► SereneDB
+           ◄──── server-sent events: tool_call, tool_result (headline + SQL), note, final, saved
+           browser ─POST /api/replay─► re-streams a saved answer (no Claude call)
 
- Explore  browser ─POST /api/tools/<name>─► tools.py ─► SereneDB      (same functions, no LLM)
+ Insights  browser ─POST /api/tools/<name>─► tools.py ─► SereneDB      (same functions, no LLM)
 
- Setup    browser ─POST /api/setup─► scripts/setup_db.py              (output streamed line by line)
-          browser ─GET  /api/status─► checks DB, tables, indexes, claude, .mcp.json, CSVs
+ Setup     browser ─POST /api/setup─► scripts/setup_db.py              (output streamed line by line)
+           browser ─GET  /api/status─► checks DB, tables, indexes, claude, .mcp.json, CSVs
 ```
+
+| File | Job |
+|---|---|
+| `frontend/src/api.ts` | `fetch` helpers, the SSE parser and the types of every API response and event |
+| `frontend/src/chat-api.ts` | the chat adapter: turns `/api/ask` and `/api/replay` events into message parts (tool calls, notes, the answer) |
+| `frontend/src/App.tsx` | layout: sidebar (new chat, Insights, history grouped by role, Setup), the role picker, the chat thread |
+| `frontend/src/components/ToolCallCard.tsx` | one tool call: arguments, headline numbers, first rows, SQL |
+| `frontend/src/Insights.tsx` | the Insights view: KPIs, team chart, trend, recurring patterns, spawn times, search |
+| `frontend/src/Setup.tsx` | the checklist and the streamed setup run |
 
 Some design points:
 
-- **The Ask tab goes through Claude Code, not a separate agent.** The web app shows exactly what Claude does in the terminal. It is a window onto the real workflow, not a second implementation of it.
-- **Explore calls the query layer directly.** Charts load instantly and cost nothing, and each panel's SQL toggle shows the same SQL Claude would get.
-- **Streaming.** `/api/ask` and `/api/setup` return `text/event-stream`, so tool calls and setup output appear as they happen. The browser reads them with `fetch` and a small parser, because `EventSource` cannot send a POST body.
-- **Safety.** The server only binds to `127.0.0.1`, because it can run setup. `/api/tools` only accepts the 7 tool names. Claude's markdown is sanitised with DOMPurify before it is shown.
+- **The chat goes through Claude Code, not a separate agent.** The web app shows exactly what Claude does in the terminal. It is a window onto the real workflow, not a second implementation of it.
+- **One question per chat.** After the answer arrives, the input disappears and "Ask another question" starts a new chat, so every chat is one question, its evidence and one answer.
+- **Insights calls the query layer directly.** Charts load instantly and cost nothing, and each panel's SQL toggle shows the same SQL Claude would get.
+- **Streaming.** `/api/ask`, `/api/replay` and `/api/setup` return `text/event-stream`, so tool calls and setup output appear as they happen. The browser reads them with `fetch` and a small parser, because `EventSource` cannot send a POST body.
+- **Safety.** The server only binds to `127.0.0.1`, because it can run setup. `/api/tools` only accepts the 7 tool names. Claude's markdown is rendered with react-markdown, which does not render raw HTML.
 
 ## The tools and who they serve
 
@@ -148,7 +159,7 @@ The question: *"Something was wrong with instance 544fd51c… What happened?"*
 4. Claude sees that the spawn took 41.8 s, roughly double the usual 20 s. It calls `duration_stats(metric='spawn_seconds', group_by='labelled_anomaly')` to compare against every other VM.
 5. Claude answers with the facts and their SQL, its hypothesis, and the next check.
 
-In the web app, steps 1 to 4 appear one by one in the Evidence panel while they run, and step 5 fills the Answer panel.
+In the web app, steps 1 to 4 appear one by one as tool-call cards while they run, and step 5 appears below them as the answer.
 
 ## Design choices worth knowing
 
