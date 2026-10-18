@@ -247,11 +247,14 @@ Every role states the data scope, counts log lines rather than incidents, never 
 
 ## Worked investigation
 
-The saved answers are in [investigation/](investigation/). The OpenStack findings are below. The BGL ones are in the role files.
+The saved answers are in [investigation/](investigation/). The engineer and team lead findings below are about OpenStack (their BGL findings are in the role files). The manager ranks priorities across both datasets.
 
 - **Engineer.** The 8 nova-compute ERROR tracebacks all come from the image-cache periodic task (`_run_image_cache_manager_pass`) failing with `InvalidDiskInfo`. `qemu-img info` ran on an instance disk that had been deleted about 20 ms earlier. The answer labels this a likely race between deleting an instance and the cache audit. It is a hypothesis to confirm on the other 7 occurrences.
 - **Team lead.** `Unknown base file` warnings are 3,059 of the 3,314 non-INFO OpenStack lines (92%), all from Storage & Images. They appear in 26 of the 32 hours the logs cover, at 37 to 136 lines per hour (median 128), and they drown out the real image-cache errors owned by Platform Runtime.
-- **Manager.** Priority 1 is the image-cache warnings, because they are constant and hide real errors. Priority 2 is the image-cache task failures. Slow VM starts are flagged but not ranked: the 4 labelled VMs averaged 38.3 s to spawn against 19.8 s for the other 2,062, and 4 cases are too few to call a trend.
+- **Manager.** Three priorities across both datasets, each with an owner, an action and a confidence level:
+  1. BGL node cards not fully working (HPC Hardware Ops): "Node card is not fully functional" 17,364 times across 2,002 nodes and "Can not get assembly information" 17,305 times across 2,000 nodes, from Jun 8 to Dec 29, so it persists to the end of the data.
+  2. Two single-source floods in BGL: "data TLB error interrupt" (152,734 lines, 15.09%, of which 152,182 come from one node) and a control-system ASSERT (84,168 lines, 8.32%, one node). Fixing those two sources would remove about 23% of the error noise, which the answer labels a hypothesis.
+  3. The OpenStack image cache (Storage & Images, Platform Runtime): `Unknown base file` is 92.31% of OpenStack warnings and errors, and the cleanup job failed 8 times. Slow VM starts are mentioned here with low confidence: the 4 labelled VMs averaged 38.3 s to start against 19.8 s for the other 2,062, too few to call a trend.
 
 What the data does not establish: user impact, downtime or cost; whether the warnings cause any failure; and the cause of the traceback, which stays a hypothesis.
 The three OpenStack files cover separate time windows (05-14 19:39–21:56, 05-16 00:00–06:25 and 05-16 15:15 to 05-17 12:02), so the gaps between them are not outages.
